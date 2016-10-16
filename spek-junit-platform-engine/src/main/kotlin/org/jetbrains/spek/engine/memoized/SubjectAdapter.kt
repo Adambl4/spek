@@ -16,7 +16,7 @@ class SubjectAdapter: AfterExecuteGroup, AfterExecuteTest {
     private val subjectMap: MutableMap<GroupExtensionContext, SubjectImpl<*>> = WeakHashMap()
 
     override fun afterExecuteGroup(group: GroupExtensionContext) {
-        var subject = subjectMap[group]
+        val subject = subjectMap[group]
 
         if (subject != null && subject.mode == CachingMode.GROUP) {
             subject.reset()
@@ -24,7 +24,9 @@ class SubjectAdapter: AfterExecuteGroup, AfterExecuteTest {
     }
 
     override fun afterExecuteTest(test: TestExtensionContext) {
-        resetSubjects(test.parent)
+        if (!test.parent.lazy) {
+            resetSubjects(test.parent)
+        }
     }
 
     fun <T> registerSubject(mode: CachingMode, group: GroupExtensionContext, factory: () -> T): SubjectImpl<T> {

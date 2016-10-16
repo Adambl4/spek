@@ -1,16 +1,17 @@
 package org.jetbrains.spek.samples
+
 import org.jetbrains.spek.api.Spek
 import org.jetbrains.spek.api.dsl.describe
 import org.jetbrains.spek.api.dsl.it
 import kotlin.test.assertEquals
 
-class NestedDescribesSpec: Spek({
+class NestedDescribesSpec : Spek({
     describe("a calculator") {
         val calculator = Calculator()
         var result = 0
 
         describe("addition") {
-            beforeEach {
+            beforeEachTest {
                 result = calculator.add(2, 4);
             }
 
@@ -23,7 +24,7 @@ class NestedDescribesSpec: Spek({
         }
 
         describe("subtraction") {
-            beforeEach {
+            beforeEachTest {
                 result = calculator.subtract(4, 2)
             }
 

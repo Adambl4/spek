@@ -39,7 +39,8 @@ class SpekTestEngine: HierarchicalTestEngine<SpekExecutionContext>() {
 
     override fun getId(): String = "spek"
 
-    override fun createExecutionContext(request: ExecutionRequest) = SpekExecutionContext(ExtensionRegistryImpl())
+    override fun createExecutionContext(request: ExecutionRequest)
+        = SpekExecutionContext(ExtensionRegistryImpl(), request)
 
     private fun resolveSpecs(discoveryRequest: EngineDiscoveryRequest, engineDescriptor: EngineDescriptor) {
         val isSpec = java.util.function.Predicate<Class<*>> {
@@ -71,7 +72,7 @@ class SpekTestEngine: HierarchicalTestEngine<SpekExecutionContext>() {
     }
 
     private fun filterOutUniqueId(target: TestDescriptor, root: TestDescriptor) {
-        if (!target.equals(root)) {
+        if (target != root) {
             if (root.allDescendants.contains(target)) {
                 val descriptors = LinkedList<TestDescriptor>()
                 root.children.forEach {
@@ -111,10 +112,24 @@ class SpekTestEngine: HierarchicalTestEngine<SpekExecutionContext>() {
     }
 
     open class Collector(val root: Scope.Group, val registry: ExtensionRegistryImpl): Dsl {
-        override fun group(description: String, pending: Pending, body: Dsl.() -> Unit) {
-            val group = Scope.Group(root.uniqueId.append(GROUP_SEGMENT_TYPE, description), pending, getSource())
+        override fun group(description: String, pending: Pending, lazy: Boolean, body: Dsl.() -> Unit) {
+            val action: Scope.Group.(SpekExecutionContext) -> Unit = if (lazy) {
+                {
+                    body.invoke(LazyGroupCollector(this, registry, it))
+                }
+            } else {
+                { }
+            }
+
+            val group = Scope.Group(
+                root.uniqueId.append(GROUP_SEGMENT_TYPE, description), pending, getSource(), lazy, action
+            )
+
             root.addChild(group)
-            body.invoke(Collector(group, registry))
+
+            if (!lazy) {
+                body.invoke(Collector(group, registry))
+            }
         }
 
         override fun test(description: String, pending: Pending, body: () -> Unit) {
@@ -122,12 +137,37 @@ class SpekTestEngine: HierarchicalTestEngine<SpekExecutionContext>() {
             root.addChild(test)
         }
 
-        override fun beforeEach(callback: () -> Unit) {
+        override fun beforeEachTest(callback: () -> Unit) {
             registry.getExtension(FixturesAdapter::class)!!.registerBeforeEach(root, callback)
         }
 
-        override fun afterEach(callback: () -> Unit) {
+        override fun afterEachTest(callback: () -> Unit) {
             registry.getExtension(FixturesAdapter::class)!!.registerAfterEach(root, callback)
+        }
+    }
+
+    class LazyGroupCollector(root: Scope.Group, registry: ExtensionRegistryImpl,
+                             val context: SpekExecutionContext): Collector(root, registry) {
+        override fun group(description: String, pending: Pending, lazy: Boolean, body: Dsl.() -> Unit) {
+            fail()
+        }
+
+        override fun beforeEachTest(callback: () -> Unit) {
+            fail()
+        }
+
+        override fun afterEachTest(callback: () -> Unit) {
+            fail()
+        }
+
+        override fun test(description: String, pending: Pending, body: () -> Unit) {
+            val test = Scope.Test(root.uniqueId.append(TEST_SEGMENT_TYPE, description), pending, getSource(), body)
+            root.addChild(test)
+            context.engineExecutionListener.dynamicTestRegistered(test)
+        }
+
+        private inline fun fail() {
+            throw SpekException("You're not allowed to do this")
         }
     }
 
@@ -184,11 +224,10 @@ class SpekTestEngine: HierarchicalTestEngine<SpekExecutionContext>() {
         const val GROUP_SEGMENT_TYPE = "group";
         const val TEST_SEGMENT_TYPE = "test";
 
-
         // TODO: fix me
         fun getSource(): TestSource? = null
 
-        fun getSpekExtensions(spec: KClass<*>): List<out Extension> {
+        fun getSpekExtensions(spec: KClass<*>): List<Extension> {
             return spec.annotations
                 .map {
                     if (it is SpekExtension) {
