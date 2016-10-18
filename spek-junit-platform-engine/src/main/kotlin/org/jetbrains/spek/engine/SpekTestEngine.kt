@@ -13,7 +13,11 @@ import org.jetbrains.spek.engine.memoized.SubjectImpl
 import org.jetbrains.spek.extension.Extension
 import org.jetbrains.spek.extension.SpekExtension
 import org.junit.platform.commons.util.ReflectionUtils
-import org.junit.platform.engine.*
+import org.junit.platform.engine.EngineDiscoveryRequest
+import org.junit.platform.engine.ExecutionRequest
+import org.junit.platform.engine.TestDescriptor
+import org.junit.platform.engine.TestSource
+import org.junit.platform.engine.UniqueId
 import org.junit.platform.engine.discovery.ClassSelector
 import org.junit.platform.engine.discovery.ClasspathSelector
 import org.junit.platform.engine.discovery.PackageSelector
@@ -21,7 +25,7 @@ import org.junit.platform.engine.discovery.UniqueIdSelector
 import org.junit.platform.engine.support.descriptor.EngineDescriptor
 import org.junit.platform.engine.support.descriptor.JavaClassSource
 import org.junit.platform.engine.support.hierarchical.HierarchicalTestEngine
-import java.util.*
+import java.util.LinkedList
 import java.util.function.Consumer
 import kotlin.reflect.KClass
 import kotlin.reflect.KProperty
@@ -111,11 +115,11 @@ class SpekTestEngine: HierarchicalTestEngine<SpekExecutionContext>() {
 
     }
 
-    open class Collector(val root: Scope.Group, val registry: ExtensionRegistryImpl): Dsl {
+    open class Collector(val root: Scope.Group, override val extensionRegistry: ExtensionRegistryImpl): Dsl {
         override fun group(description: String, pending: Pending, lazy: Boolean, body: Dsl.() -> Unit) {
             val action: Scope.Group.(SpekExecutionContext) -> Unit = if (lazy) {
                 {
-                    body.invoke(LazyGroupCollector(this, registry, it))
+                    body.invoke(LazyGroupCollector(this, extensionRegistry, it))
                 }
             } else {
                 { }
@@ -128,7 +132,7 @@ class SpekTestEngine: HierarchicalTestEngine<SpekExecutionContext>() {
             root.addChild(group)
 
             if (!lazy) {
-                body.invoke(Collector(group, registry))
+                body.invoke(Collector(group, extensionRegistry))
             }
         }
 
@@ -138,11 +142,11 @@ class SpekTestEngine: HierarchicalTestEngine<SpekExecutionContext>() {
         }
 
         override fun beforeEachTest(callback: () -> Unit) {
-            registry.getExtension(FixturesAdapter::class)!!.registerBeforeEach(root, callback)
+            extensionRegistry.getExtension(FixturesAdapter::class)!!.registerBeforeEach(root, callback)
         }
 
         override fun afterEachTest(callback: () -> Unit) {
-            registry.getExtension(FixturesAdapter::class)!!.registerAfterEach(root, callback)
+            extensionRegistry.getExtension(FixturesAdapter::class)!!.registerAfterEach(root, callback)
         }
     }
 
@@ -176,7 +180,7 @@ class SpekTestEngine: HierarchicalTestEngine<SpekExecutionContext>() {
         var _subject: SubjectImpl<T>? = null
 
         override fun subject(mode: CachingMode, factory: () -> T): Subject<T> {
-            return registry.getExtension(SubjectAdapter::class)!!
+            return extensionRegistry.getExtension(SubjectAdapter::class)!!
                 .registerSubject(mode, root, factory).apply { _subject = this }
         }
 
@@ -192,7 +196,7 @@ class SpekTestEngine: HierarchicalTestEngine<SpekExecutionContext>() {
             val instance = spec.primaryConstructor!!.call()
             val nestedRegistry = ExtensionRegistryImpl()
 
-            registry.extensions().forEach { nestedRegistry.registerExtension(it) }
+            extensionRegistry.extensions().forEach { nestedRegistry.registerExtension(it) }
             getSpekExtensions(spec)
                 .forEach { nestedRegistry.registerExtension(it) }
 
