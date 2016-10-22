@@ -96,13 +96,14 @@ class SpekTestEngine: HierarchicalTestEngine<SpekExecutionContext>() {
             registerExtension(SubjectAdapter())
         }
 
-        getSpekExtensions(klass.kotlin)
+        val kotlinClass = klass.kotlin
+        getSpekExtensions(kotlinClass)
             .forEach { registry.registerExtension(it) }
 
-        val instance = klass.kotlin.primaryConstructor!!.call()
+        val instance = kotlinClass.primaryConstructor!!.call()
         val root = Scope.Spec(
             engineDescriptor.uniqueId.append(SPEC_SEGMENT_TYPE, klass.name),
-            JavaClassSource(klass), registry, false
+            JavaClassSource(klass), registry, kotlinClass, false
         )
         engineDescriptor.addChild(root)
 
@@ -202,7 +203,7 @@ class SpekTestEngine: HierarchicalTestEngine<SpekExecutionContext>() {
 
             val scope = Scope.Spec(
                 root.uniqueId.append(SPEC_SEGMENT_TYPE, spec.java.name),
-                JavaClassSource(spec.java), nestedRegistry, true
+                JavaClassSource(spec.java), nestedRegistry, spec, true
             )
             root.addChild(scope)
             instance.spec.invoke(NestedSubjectCollector(scope, nestedRegistry, this as SubjectCollector<T>))
